@@ -1,0 +1,301 @@
+{
+  "account_id": "123456789012",
+  "scan_time": "2026-07-28T10:00:00+00:00",
+  "account_summary": {
+    "AccountMFAEnabled": 0,
+    "Users": 4,
+    "Roles": 3,
+    "Groups": 1
+  },
+  "password_policy": {
+    "MinimumPasswordLength": 8,
+    "RequireSymbols": false,
+    "RequireNumbers": false,
+    "RequireUppercaseCharacters": false,
+    "RequireLowercaseCharacters": true,
+    "AllowUsersToChangePassword": true,
+    "ExpirePasswords": false,
+    "MaxPasswordAge": null,
+    "PasswordReusePrevention": null,
+    "HardExpiry": null
+  },
+  "users": [
+    {
+      "UserName": "alice",
+      "UserId": "AIDAALICE001",
+      "Arn": "arn:aws:iam::123456789012:user/alice",
+      "CreateDate": "2024-01-15T00:00:00Z",
+      "PasswordLastUsed": "2026-07-20T08:00:00Z",
+      "console_access": true,
+      "mfa_devices": [],
+      "groups": [],
+      "access_keys": [
+        {
+          "AccessKeyId": "AKIAALICESTALE01",
+          "Status": "Active",
+          "CreateDate": "2024-01-15T00:00:00Z",
+          "LastUsedDate": "2025-12-01T00:00:00Z",
+          "DaysSinceLastUsed": 240,
+          "AgeDays": 560
+        }
+      ],
+      "attached_policies": [
+        {
+          "PolicyName": "AdminInline",
+          "PolicyArn": "arn:aws:iam::123456789012:policy/AdminInline",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": "*",
+                "Resource": "*"
+              }
+            ]
+          }
+        }
+      ],
+      "inline_policies": []
+    },
+    {
+      "UserName": "bob",
+      "UserId": "AIDABOB002",
+      "Arn": "arn:aws:iam::123456789012:user/bob",
+      "CreateDate": "2024-03-01T00:00:00Z",
+      "PasswordLastUsed": null,
+      "console_access": false,
+      "mfa_devices": [],
+      "groups": [],
+      "access_keys": [
+        {
+          "AccessKeyId": "AKIABOBOLDKEY02",
+          "Status": "Active",
+          "CreateDate": "2024-03-01T00:00:00Z",
+          "LastUsedDate": "2026-07-25T00:00:00Z",
+          "DaysSinceLastUsed": 3,
+          "AgeDays": 510
+        }
+      ],
+      "attached_policies": [],
+      "inline_policies": [
+        {
+          "PolicyName": "WildInline",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": "*",
+                "Resource": "*"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "UserName": "charlie",
+      "UserId": "AIDACHARLIE003",
+      "Arn": "arn:aws:iam::123456789012:user/charlie",
+      "CreateDate": "2025-01-01T00:00:00Z",
+      "PasswordLastUsed": "2026-07-27T00:00:00Z",
+      "console_access": true,
+      "mfa_devices": [
+        {
+          "SerialNumber": "arn:aws:iam::123456789012:mfa/charlie",
+          "EnableDate": "2025-01-02T00:00:00Z"
+        }
+      ],
+      "groups": [
+        {
+          "GroupName": "Developers",
+          "GroupId": "AGPADEV001",
+          "Arn": "arn:aws:iam::123456789012:group/Developers"
+        }
+      ],
+      "access_keys": [
+        {
+          "AccessKeyId": "AKIACHARLIEFRESH",
+          "Status": "Active",
+          "CreateDate": "2026-06-01T00:00:00Z",
+          "LastUsedDate": "2026-07-27T00:00:00Z",
+          "DaysSinceLastUsed": 1,
+          "AgeDays": 57
+        }
+      ],
+      "attached_policies": [
+        {
+          "PolicyName": "PrivEsc",
+          "PolicyArn": "arn:aws:iam::123456789012:policy/PrivEsc",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "iam:CreatePolicyVersion",
+                  "iam:PassRole",
+                  "iam:AttachUserPolicy"
+                ],
+                "Resource": "*"
+              }
+            ]
+          }
+        }
+      ],
+      "inline_policies": []
+    },
+    {
+      "UserName": "diana",
+      "UserId": "AIDADIANA004",
+      "Arn": "arn:aws:iam::123456789012:user/diana",
+      "CreateDate": "2025-06-01T00:00:00Z",
+      "PasswordLastUsed": null,
+      "console_access": false,
+      "mfa_devices": [],
+      "groups": [],
+      "access_keys": [],
+      "attached_policies": [
+        {
+          "PolicyName": "BroadNoCond",
+          "PolicyArn": "arn:aws:iam::123456789012:policy/BroadNoCond",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": ["s3:*", "ec2:*"],
+                "Resource": "*"
+              }
+            ]
+          }
+        }
+      ],
+      "inline_policies": []
+    }
+  ],
+  "groups": [
+    {
+      "GroupName": "Developers",
+      "GroupId": "AGPADEV001",
+      "Arn": "arn:aws:iam::123456789012:group/Developers",
+      "attached_policies": [
+        {
+          "PolicyName": "ReadOnlyAccess",
+          "PolicyArn": "arn:aws:iam::aws:policy/ReadOnlyAccess",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "s3:GetObject",
+                  "s3:ListBucket",
+                  "ec2:Describe*"
+                ],
+                "Resource": "*"
+              }
+            ]
+          }
+        }
+      ],
+      "inline_policies": []
+    }
+  ],
+  "roles": [
+    {
+      "RoleName": "OpenRole",
+      "RoleId": "AROAOPEN001",
+      "Arn": "arn:aws:iam::123456789012:role/OpenRole",
+      "CreateDate": "2024-06-01T00:00:00Z",
+      "AssumeRolePolicyDocument": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": "*",
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      },
+      "RoleLastUsed": null,
+      "attached_policies": [
+        {
+          "PolicyName": "PowerUserAccess",
+          "PolicyArn": "arn:aws:iam::aws:policy/PowerUserAccess",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "NotAction": "iam:*",
+                "Resource": "*"
+              }
+            ]
+          }
+        }
+      ],
+      "inline_policies": []
+    },
+    {
+      "RoleName": "CrossAccountRole",
+      "RoleId": "AROACROSS002",
+      "Arn": "arn:aws:iam::123456789012:role/CrossAccountRole",
+      "CreateDate": "2025-02-01T00:00:00Z",
+      "AssumeRolePolicyDocument": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "AWS": "arn:aws:iam::999999999999:root"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      },
+      "RoleLastUsed": null,
+      "attached_policies": [],
+      "inline_policies": []
+    },
+    {
+      "RoleName": "SafeServiceRole",
+      "RoleId": "AROASAFE003",
+      "Arn": "arn:aws:iam::123456789012:role/SafeServiceRole",
+      "CreateDate": "2025-08-01T00:00:00Z",
+      "AssumeRolePolicyDocument": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "ec2.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      },
+      "RoleLastUsed": "2026-07-20T00:00:00Z",
+      "attached_policies": [
+        {
+          "PolicyName": "AmazonSSMManagedInstanceCore",
+          "PolicyArn": "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "ssm:UpdateInstanceInformation",
+                  "ssmmessages:CreateControlChannel"
+                ],
+                "Resource": "*"
+              }
+            ]
+          }
+        }
+      ],
+      "inline_policies": []
+    }
+  ]
+}

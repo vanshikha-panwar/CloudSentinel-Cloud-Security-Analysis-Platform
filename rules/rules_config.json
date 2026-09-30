@@ -1,90 +1,152 @@
 {
-  "version": "1.0",
-  "description": "AWS IAM Misconfiguration Scanner - Rule Definitions",
+  "version": "1.1",
+  "description": "AWS IAM Misconfiguration Scanner - Rule Definitions with MITRE ATT&CK mappings",
+  "mitre_framework": "MITRE ATT&CK Enterprise (cloud-relevant techniques)",
+  "mitre_reference": "https://attack.mitre.org/",
   "rules": [
     {
       "rule_id": "RULE_001",
       "rule_name": "ROOT_ACCOUNT_NO_MFA",
       "severity": "CRITICAL",
       "description": "Root account does not have MFA enabled.",
-      "remediation": "Enable MFA on root account immediately."
+      "remediation": "Enable MFA on root account immediately.",
+      "mitre_attack": {
+        "primary_tactic": "Privilege Escalation",
+        "technique_ids": ["T1078.004"],
+        "rationale": "Root without MFA is a high-value valid cloud account. Compromised root credentials enable full account takeover without a second factor."
+      }
     },
     {
       "rule_id": "RULE_002",
       "rule_name": "USER_NO_MFA",
       "severity": "HIGH",
       "description": "IAM user has console access but no MFA enabled.",
-      "remediation": "Enable MFA for the user."
+      "remediation": "Enable MFA for the user.",
+      "mitre_attack": {
+        "primary_tactic": "Initial Access",
+        "technique_ids": ["T1078.004"],
+        "rationale": "Console users without MFA are easier targets for password-based initial access using valid cloud accounts."
+      }
     },
     {
       "rule_id": "RULE_003",
       "rule_name": "WILDCARD_ADMIN_POLICY",
       "severity": "CRITICAL",
       "description": "Policy grants full administrative access (*:*)",
-      "remediation": "Use least privilege policies."
+      "remediation": "Use least privilege policies.",
+      "mitre_attack": {
+        "primary_tactic": "Privilege Escalation",
+        "technique_ids": ["T1078.004", "T1098", "T1548"],
+        "rationale": "Action:* Resource:* grants unrestricted privileges, enabling adversaries to use valid accounts for account manipulation and elevation of privileges."
+      }
     },
     {
       "rule_id": "RULE_004",
       "rule_name": "STALE_ACCESS_KEY",
       "severity": "HIGH",
       "description": "Access key has not been used for >90 days.",
-      "remediation": "Deactivate and delete unused keys."
+      "remediation": "Deactivate and delete unused keys.",
+      "mitre_attack": {
+        "primary_tactic": "Credential Access",
+        "technique_ids": ["T1078.004", "T1552"],
+        "rationale": "Stale but active access keys are long-lived credentials that adversaries can reuse if leaked or stolen."
+      }
     },
     {
       "rule_id": "RULE_005",
       "rule_name": "ACCESS_KEY_AGE",
       "severity": "MEDIUM",
       "description": "Access key older than 90 days without rotation.",
-      "remediation": "Rotate access keys every 90 days."
+      "remediation": "Rotate access keys every 90 days.",
+      "mitre_attack": {
+        "primary_tactic": "Credential Access",
+        "technique_ids": ["T1078.004", "T1552"],
+        "rationale": "Unrotated access keys increase the window of opportunity for credential theft and continued use of valid cloud accounts."
+      }
     },
     {
       "rule_id": "RULE_006",
       "rule_name": "INLINE_POLICY_WILDCARD",
       "severity": "HIGH",
       "description": "Inline policy grants wildcard permissions.",
-      "remediation": "Convert to least-privilege managed policy."
+      "remediation": "Convert to least-privilege managed policy.",
+      "mitre_attack": {
+        "primary_tactic": "Privilege Escalation",
+        "technique_ids": ["T1078.004", "T1098"],
+        "rationale": "Wildcard inline policies create hard-to-audit admin-like privileges that support account manipulation and privilege abuse."
+      }
     },
     {
       "rule_id": "RULE_007",
       "rule_name": "OVERLY_PERMISSIVE_TRUST_POLICY",
       "severity": "CRITICAL",
       "description": "Role trust policy allows any principal (*).",
-      "remediation": "Restrict Principal in trust policy."
+      "remediation": "Restrict Principal in trust policy.",
+      "mitre_attack": {
+        "primary_tactic": "Initial Access",
+        "technique_ids": ["T1078.004", "T1098.003", "T1548"],
+        "rationale": "A trust policy with Principal:* lets any identity assume the role, enabling initial access and abuse of cloud role privileges."
+      }
     },
     {
       "rule_id": "RULE_008",
       "rule_name": "PRIVILEGE_ESCALATION_PERMISSIONS",
       "severity": "HIGH",
       "description": "Entity has permissions that can lead to privilege escalation.",
-      "remediation": "Remove unnecessary high-privilege actions."
+      "remediation": "Remove unnecessary high-privilege actions.",
+      "mitre_attack": {
+        "primary_tactic": "Privilege Escalation",
+        "technique_ids": ["T1098", "T1098.001", "T1098.003", "T1136.003", "T1078.004"],
+        "rationale": "IAM actions such as CreatePolicyVersion, PassRole, AttachUserPolicy, and CreateAccessKey map directly to account manipulation and privilege escalation."
+      }
     },
     {
       "rule_id": "RULE_009",
       "rule_name": "WEAK_PASSWORD_POLICY",
       "severity": "MEDIUM",
       "description": "Account password policy is too permissive.",
-      "remediation": "Enforce strong password policy (14+ chars, complexity, rotation)."
+      "remediation": "Enforce strong password policy (14+ chars, complexity, rotation).",
+      "mitre_attack": {
+        "primary_tactic": "Credential Access",
+        "technique_ids": ["T1110", "T1078"],
+        "rationale": "Weak password policies make online password guessing and credential stuffing against valid accounts more practical."
+      }
     },
     {
       "rule_id": "RULE_010",
       "rule_name": "DIRECT_POLICY_ATTACHMENT",
       "severity": "LOW",
       "description": "Policies attached directly to users instead of groups.",
-      "remediation": "Use IAM groups for policy management."
+      "remediation": "Use IAM groups for policy management.",
+      "mitre_attack": {
+        "primary_tactic": "Persistence",
+        "technique_ids": ["T1098", "T1078.004"],
+        "rationale": "Direct user policy attachments increase privilege sprawl and make account manipulation harder to detect during audits."
+      }
     },
     {
       "rule_id": "RULE_011",
       "rule_name": "CROSS_ACCOUNT_TRUST_NO_EXTERNAL_ID",
       "severity": "HIGH",
       "description": "Cross-account trust without ExternalId condition.",
-      "remediation": "Require sts:ExternalId in trust policy."
+      "remediation": "Require sts:ExternalId in trust policy.",
+      "mitre_attack": {
+        "primary_tactic": "Initial Access",
+        "technique_ids": ["T1199", "T1078.004", "T1098.003"],
+        "rationale": "Cross-account role trust without ExternalId is vulnerable to confused-deputy abuse of trusted relationships and cloud roles."
+      }
     },
     {
       "rule_id": "RULE_012",
       "rule_name": "NO_CONDITION_SENSITIVE_ACTIONS",
       "severity": "MEDIUM",
       "description": "Broad permissions granted without any Condition constraints.",
-      "remediation": "Add aws:SourceIp, MFA, or other conditions."
+      "remediation": "Add aws:SourceIp, MFA, or other conditions.",
+      "mitre_attack": {
+        "primary_tactic": "Collection",
+        "technique_ids": ["T1078.004", "T1530", "T1580"],
+        "rationale": "Broad IAM/S3/EC2 permissions without conditions enable unrestricted discovery and collection from cloud resources once credentials are obtained."
+      }
     }
   ]
 }

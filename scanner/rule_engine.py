@@ -3,13 +3,15 @@ Rule Engine Module
 
 Runs all 12 security rules against collected IAM data.
 Each rule produces structured findings.
-Findings include cvss_score calculated by RiskScorer.
+Findings include cvss_score calculated by RiskScorer
+and MITRE ATT&CK technique mappings.
 """
 
 from typing import List, Dict, Any
 from datetime import datetime, timezone
 from .policy_parser import PolicyParser
 from .risk_scorer import RiskScorer
+from .mitre_attack import MitreAttackMapper
 
 
 class RuleEngine:
@@ -17,9 +19,10 @@ class RuleEngine:
     Applies security rules to IAM data and produces findings.
     """
 
-    def __init__(self):
+    def __init__(self, mitre_mapper: MitreAttackMapper = None):
         self.policy_parser = PolicyParser()
         self.risk_scorer = RiskScorer()
+        self.mitre_mapper = mitre_mapper or MitreAttackMapper.from_rules_config()
 
     def _create_finding(
         self,
@@ -32,11 +35,12 @@ class RuleEngine:
         remediation: str,
         modifiers: Dict[str, bool] = None
     ) -> Dict[str, Any]:
-        """Helper to build a standardized finding dict."""
+        """Helper to build a standardized finding dict with MITRE ATT&CK mapping."""
         if modifiers is None:
             modifiers = {}
 
         cvss_score = self.risk_scorer.calculate_score(severity, modifiers)
+        mitre_attack = self.mitre_mapper.get_mapping(rule_id)
 
         return {
             "rule_id": rule_id,
@@ -46,7 +50,8 @@ class RuleEngine:
             "entity_type": entity_type,
             "description": description,
             "remediation": remediation,
-            "cvss_score": cvss_score
+            "cvss_score": cvss_score,
+            "mitre_attack": mitre_attack,
         }
 
     def run_all_rules(self, iam_data: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -402,11 +407,53 @@ class RuleEngine:
                 ))
         return findings
 
+    def _has_external_id_condition(self, condition: Dict) -> bool:
+        """Return True if Condition requires sts:ExternalId (any operator)."""
+        if not isinstance(condition, dict) or not condition:
+            return False
+        for operator, keys in condition.items():
+            if not isinstance(keys, dict):
+                continue
+            for cond_key in keys.keys():
+                if str(cond_key).lower() in ("sts:externalid", "externalid"):
+                    return True
+        # Fallback: string search for common misspellings / nested forms
+        return "externalid" in str(condition).lower()
+
+    def _extract_aws_principals(self, principal) -> List[str]:
+        """Normalize Principal to a list of AWS principal strings."""
+        if principal is None:
+            return []
+        if principal == "*":
+            return ["*"]
+        if isinstance(principal, str):
+            return [principal]
+        if isinstance(principal, dict):
+            aws_p = principal.get("AWS")
+            if aws_p is None:
+                return []
+            if isinstance(aws_p, list):
+                return [p for p in aws_p if isinstance(p, str)]
+            if isinstance(aws_p, str):
+                return [aws_p]
+        return []
+
+    def _account_id_from_arn(self, arn: str) -> str:
+        """Extract 12-digit account id from an IAM ARN, or empty string."""
+        if not arn or not isinstance(arn, str):
+            return ""
+        # arn:aws:iam::123456789012:role/Name
+        parts = arn.split(":")
+        if len(parts) >= 5 and parts[4].isdigit() and len(parts[4]) == 12:
+            return parts[4]
+        return ""
+
     def _rule_011_cross_account_no_external_id(self, roles: List[Dict]) -> List[Dict]:
         findings = []
         for role in roles:
             role_name = role.get('RoleName', 'unknown')
             arn = role.get('Arn', role_name)
+            role_account = self._account_id_from_arn(arn)
             trust_doc = role.get('AssumeRolePolicyDocument')
 
             if not trust_doc:
@@ -422,39 +469,34 @@ class RuleEngine:
                 if str(stmt.get('Effect', '')).lower() != 'allow':
                     continue
 
-                principal = stmt.get('Principal')
                 condition = stmt.get('Condition', {}) or {}
+                if self._has_external_id_condition(condition):
+                    continue
 
-                has_external_id = False
-                if isinstance(condition, dict):
-                    # Check for sts:ExternalId anywhere in condition
-                    for key in condition.keys():
-                        if 'sts:ExternalId' in str(key) or 'ExternalId' in str(condition.get(key, {})):
-                            has_external_id = True
-                            break
-                    # Also check values
-                    if not has_external_id:
-                        for val in str(condition).lower().split():
-                            if 'externalid' in val:
-                                has_external_id = True
-
-                # Detect cross-account principal
+                # Flag wildcard or foreign-account AWS principals without ExternalId.
+                # Same-account principals and service principals are skipped.
+                aws_principals = self._extract_aws_principals(stmt.get('Principal'))
                 is_cross_account = False
-                if principal:
-                    principal_str = str(principal)
-                    if 'arn:aws:iam::' in principal_str and ':root' in principal_str or 'arn:aws:iam::' in principal_str:
-                        # Crude check for different account - but we flag if any aws account arn + no external id
+                for p in aws_principals:
+                    if p == "*":
                         is_cross_account = True
-                    if isinstance(principal, dict):
-                        aws_p = principal.get('AWS')
-                        if isinstance(aws_p, str) and 'arn:aws:iam::' in aws_p:
-                            is_cross_account = True
-                        if isinstance(aws_p, list):
-                            for p in aws_p:
-                                if isinstance(p, str) and 'arn:aws:iam::' in p:
-                                    is_cross_account = True
+                        break
+                    if "arn:aws:iam::" not in p:
+                        continue
+                    principal_account = self._account_id_from_arn(p)
+                    if not principal_account:
+                        # Account ARN present but unparsable — still treat as external risk
+                        is_cross_account = True
+                        break
+                    if role_account and principal_account != role_account:
+                        is_cross_account = True
+                        break
+                    if not role_account:
+                        # Role ARN missing account — flag any IAM principal ARN
+                        is_cross_account = True
+                        break
 
-                if is_cross_account and not has_external_id:
+                if is_cross_account:
                     findings.append(self._create_finding(
                         rule_id="RULE_011",
                         rule_name="CROSS_ACCOUNT_TRUST_NO_EXTERNAL_ID",

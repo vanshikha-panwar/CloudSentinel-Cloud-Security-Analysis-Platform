@@ -22,6 +22,9 @@ logger = logging.getLogger(__name__)
 class IamCollector:
     """
     Collects comprehensive IAM data for security analysis.
+
+    AWS clients are created lazily so offline file-mode scans work
+    without any AWS credentials configured.
     """
 
     def __init__(self, profile_name=None, region_name=None):
@@ -31,15 +34,36 @@ class IamCollector:
         :param profile_name: Optional AWS profile name from ~/.aws/credentials
         :param region_name: Optional AWS region (IAM is global but client needs region)
         """
-        session_kwargs = {}
-        if profile_name:
-            session_kwargs['profile_name'] = profile_name
-        if region_name:
-            session_kwargs['region_name'] = region_name
+        self.profile_name = profile_name
+        self.region_name = region_name
+        self._session = None
+        self._iam_client = None
+        self._sts_client = None
 
-        self.session = boto3.Session(**session_kwargs)
-        self.iam_client = self.session.client('iam')
-        self.sts_client = self.session.client('sts')
+    def _ensure_clients(self):
+        """Create Boto3 session/clients only when live AWS access is needed."""
+        if self._iam_client is not None:
+            return
+
+        session_kwargs = {}
+        if self.profile_name:
+            session_kwargs['profile_name'] = self.profile_name
+        if self.region_name:
+            session_kwargs['region_name'] = self.region_name
+
+        self._session = boto3.Session(**session_kwargs)
+        self._iam_client = self._session.client('iam')
+        self._sts_client = self._session.client('sts')
+
+    @property
+    def iam_client(self):
+        self._ensure_clients()
+        return self._iam_client
+
+    @property
+    def sts_client(self):
+        self._ensure_clients()
+        return self._sts_client
 
     def _get_account_id(self):
         """Get the current AWS account ID."""

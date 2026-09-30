@@ -7,6 +7,7 @@ All tests use synthetic mock IAM data. No real AWS calls are made.
 import pytest
 from scanner.rule_engine import RuleEngine
 from scanner.risk_scorer import RiskScorer
+from scanner.mitre_attack import MitreAttackMapper, RULE_MITRE_MAP
 
 
 @pytest.fixture
@@ -429,3 +430,68 @@ def test_get_severity_from_score():
     assert scorer.get_severity_from_score(5.0) == "MEDIUM"
     assert scorer.get_severity_from_score(2.5) == "LOW"
     assert scorer.get_severity_from_score(0.5) == "INFO"
+
+
+# -----------------------------
+# MITRE ATT&CK mapping tests
+# -----------------------------
+def test_mitre_mapper_all_rules_have_techniques():
+    mapper = MitreAttackMapper()
+    for rule_id in RULE_MITRE_MAP:
+        mapping = mapper.get_mapping(rule_id)
+        assert mapping["framework"] == "MITRE ATT&CK"
+        assert mapping["primary_tactic"]
+        assert len(mapping["techniques"]) >= 1
+        assert mapping["techniques"][0]["technique_id"].startswith("T")
+        assert "url" in mapping["techniques"][0]
+
+
+def test_findings_include_mitre_attack(engine):
+    iam_data = {
+        "users": [],
+        "roles": [],
+        "groups": [],
+        "password_policy": {},
+        "account_summary": {"AccountMFAEnabled": 0},
+    }
+    findings = engine.run_all_rules(iam_data)
+    root = [f for f in findings if f["rule_id"] == "RULE_001"][0]
+    assert "mitre_attack" in root
+    assert root["mitre_attack"]["primary_tactic"] == "Privilege Escalation"
+    tech_ids = [t["technique_id"] for t in root["mitre_attack"]["techniques"]]
+    assert "T1078.004" in tech_ids
+
+
+def test_mitre_privilege_escalation_maps_to_t1098(engine):
+    from scanner.rule_engine import RuleEngine  # noqa: F401 — uses engine fixture
+    user = make_mock_user("esc-user", attached_policies=[make_priv_esc_policy()])
+    findings = engine.run_all_rules(
+        {"users": [user], "roles": [], "groups": [], "password_policy": {}, "account_summary": {}}
+    )
+    esc = [f for f in findings if f["rule_id"] == "RULE_008"][0]
+    tech_ids = [t["technique_id"] for t in esc["mitre_attack"]["techniques"]]
+    assert "T1098" in tech_ids or "T1098.001" in tech_ids
+    assert esc["mitre_attack"]["primary_tactic"] == "Privilege Escalation"
+
+
+def test_mitre_summary_counts():
+    mapper = MitreAttackMapper()
+    findings = [
+        {
+            "rule_id": "RULE_001",
+            "mitre_attack": mapper.get_mapping("RULE_001"),
+        },
+        {
+            "rule_id": "RULE_002",
+            "mitre_attack": mapper.get_mapping("RULE_002"),
+        },
+        {
+            "rule_id": "RULE_008",
+            "mitre_attack": mapper.get_mapping("RULE_008"),
+        },
+    ]
+    summary = mapper.summarize_findings(findings)
+    assert summary["framework"] == "MITRE ATT&CK"
+    assert summary["unique_techniques"] >= 1
+    assert summary["unique_tactics"] >= 1
+    assert any(t["technique_id"] == "T1078.004" for t in summary["techniques"])
