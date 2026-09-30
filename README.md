@@ -181,6 +181,8 @@ iam-scanner/
 ├── screenshots/                 # README screenshots
 ├── output/                      # Generated CLI reports (gitignored)
 ├── main.py                      # CLI entry point
+├── Dockerfile                   # Container image for the REST API
+├── .dockerignore                # Keeps the build context small
 └── requirements.txt
 ```
 
@@ -499,6 +501,52 @@ hardcoded list):
     }
   ]
 }
+```
+
+---
+
+## Docker
+
+The `Dockerfile` packages the REST API on a `python:3.11-slim` base. The
+image contains only what the API needs (`scanner/`, `cloudsentinel/`,
+`rules/` and the installed requirements), runs as a non-root user, and
+starts:
+
+```
+uvicorn cloudsentinel.api.app:app --host 0.0.0.0 --port 8000
+```
+
+The container does not need AWS credentials: it analyzes the IAM data sent
+to `POST /scans`.
+
+**Build the image** (from the repository root):
+
+```bash
+docker build -t cloudsentinel-api .
+```
+
+**Run the container:**
+
+```bash
+docker run -d --rm --name cloudsentinel -p 8000:8000 cloudsentinel-api
+```
+
+**Check it is running:**
+
+```bash
+curl http://127.0.0.1:8000/health
+# {"status":"ok"}
+```
+
+**Interactive API docs:** open [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) in a browser.
+
+The container serves the same API on the same port, so all examples in
+[REST API Usage](#rest-api-usage) work against it unchanged.
+
+**Stop the container** (it is removed automatically because of `--rm`):
+
+```bash
+docker stop cloudsentinel
 ```
 
 ---

@@ -1,0 +1,35 @@
+# Version control
+.git
+.gitignore
+
+# Virtual environments
+.venv
+venv
+env
+
+# Python caches and bytecode
+__pycache__
+**/__pycache__
+*.pyc
+**/*.pyc
+.pytest_cache
+**/.pytest_cache
+
+# Generated reports and project documents
+output
+report resources
+screenshots
+
+# Not needed by the API container
+tests
+sample_data
+main.py
+README.md
+Dockerfile
+.dockerignore
+
+# Local editor / environment files
+.vscode
+.idea
+.env
+*.log
