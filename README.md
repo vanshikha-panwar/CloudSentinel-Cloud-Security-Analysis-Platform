@@ -13,7 +13,7 @@ AI-generated explanations of individual findings.
 
 ## Why I Built This
 
-IAM misconfiguration is the **#1 cause** of AWS account compromise. Tools like this automate what a security engineer would manually check during a cloud security audit.
+IAM misconfiguration is the **major** of AWS account compromise. Tools like this automate what a security engineer would manually check during a cloud security audit.
 The goal was to understand both the **attack surface** (what misconfigurations enable privilege escalation) and the **detection logic** (how to programmatically identify them at scale).
 
 ---
