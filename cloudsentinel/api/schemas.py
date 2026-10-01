@@ -115,3 +115,38 @@ class ExplanationResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     detail: str
+
+
+class StoredScanReport(ScanReport):
+    """A stored scan: the original POST /scans report plus its history identifiers."""
+
+    scan_id: str
+    created_at: str
+
+
+class StoredScanSummary(BaseModel):
+    scan_id: str
+    created_at: str
+    account_id: str
+    scan_time: str
+    filters: ScanFilters
+    summary: SeveritySummary
+
+
+class ScanListResponse(BaseModel):
+    limit: int
+    offset: int
+    scans: List[StoredScanSummary]
+
+
+class StoredExplanation(ExplanationResponse):
+    """A stored AI explanation; `finding` is the scanner finding at explanation time."""
+
+    explanation_id: int
+    created_at: str
+
+
+class ExplanationHistoryResponse(BaseModel):
+    finding_id: str
+    total: int
+    explanations: List[StoredExplanation]

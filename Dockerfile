@@ -1,6 +1,7 @@
 # CloudSentinel REST API
 # Build: docker build -t cloudsentinel-api .
-# Run:   docker run -d --rm --name cloudsentinel -p 8000:8000 cloudsentinel-api
+# Run:   docker run -d --rm --name cloudsentinel -p 127.0.0.1:8000:8000 \
+#          -v cloudsentinel-data:/app/data cloudsentinel-api
 
 FROM python:3.11-slim
 
@@ -23,8 +24,15 @@ COPY scanner/ scanner/
 COPY cloudsentinel/ cloudsentinel/
 COPY rules/ rules/
 
-# Run as an unprivileged user
-RUN useradd --create-home --uid 10001 appuser
+# Scan history (SQLite). Same as the application's default path; override
+# with -e CLOUDSENTINEL_DB_PATH=... and mount a volume on /app/data to keep
+# data across container restarts.
+ENV CLOUDSENTINEL_DB_PATH=/app/data/cloudsentinel.db
+
+# Run as an unprivileged user that owns only the data directory
+RUN useradd --create-home --uid 10001 appuser \
+    && mkdir -p /app/data \
+    && chown appuser:appuser /app/data
 USER appuser
 
 EXPOSE 8000

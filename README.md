@@ -721,8 +721,9 @@ The container does not need AWS credentials: it analyzes the IAM data sent
 to `POST /scans`.
 
 > **Status:** the Dockerfile has not yet been built or run locally (Docker was
-> not available during development). The API itself was verified outside
-> Docker using the same files and start command.
+> not available during development), including the SQLite data directory and
+> volume setup below. The API itself was verified outside Docker using the
+> same files and start command.
 
 **Build the image** (from the repository root):
 
@@ -748,6 +749,30 @@ curl http://127.0.0.1:8000/health
 The container serves the same API on the same port, so all examples in
 [REST API Usage](#rest-api-usage) work against it unchanged.
 
+**Persistent scan history (SQLite).** The image stores scan history at
+`/app/data/cloudsentinel.db` (`CLOUDSENTINEL_DB_PATH`). `/app/data` is
+created at build time and owned by the non-root `appuser`. Without a volume,
+the database is lost when the container is removed; mount a named volume to
+keep it:
+
+```bash
+docker run -d --rm --name cloudsentinel -p 127.0.0.1:8000:8000 \
+  -v cloudsentinel-data:/app/data \
+  cloudsentinel-api
+```
+
+A new, empty named volume takes its ownership from the image's `/app/data`,
+so `appuser` can write to it. If you bind-mount a host directory instead
+(`-v /path/on/host:/app/data`), that directory must be writable by UID
+`10001`. To store the database elsewhere, set the path at run time, e.g.
+`-e CLOUDSENTINEL_DB_PATH=/app/data/history.db`. If the database cannot be
+written, scans and explanations are still returned but not saved, and the
+history endpoints return `503`.
+
+The stored history contains scanner findings (ARNs, IAM names, access key
+IDs). Treat the volume as sensitive; remove it with
+`docker volume rm cloudsentinel-data` when no longer needed.
+
 **Enable AI explanations in the container** by passing the
 `CLOUDSENTINEL_LLM_*` variables at run time (never bake the key into the
 image). With `-e NAME` and no value, Docker copies the variable from your
@@ -755,13 +780,15 @@ current shell, so the key does not appear on the command line:
 
 ```bash
 docker run -d --rm --name cloudsentinel -p 127.0.0.1:8000:8000 \
+  -v cloudsentinel-data:/app/data \
   -e CLOUDSENTINEL_LLM_PROVIDER -e CLOUDSENTINEL_LLM_BASE_URL \
   -e CLOUDSENTINEL_LLM_MODEL -e CLOUDSENTINEL_LLM_API_KEY \
   cloudsentinel-api
 ```
 
 > **Security note:** the API has no authentication. When an LLM API key is
-> configured, anyone who can reach the port can trigger paid provider calls.
+> configured, anyone who can reach the port can trigger paid provider calls,
+> and anyone can read stored scan history through `GET /scans`.
 > Do not expose it publicly — bind it to localhost with
 > `-p 127.0.0.1:8000:8000` instead of `-p 8000:8000`.
 

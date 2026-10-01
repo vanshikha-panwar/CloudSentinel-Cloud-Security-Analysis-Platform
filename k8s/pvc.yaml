@@ -1,0 +1,15 @@
+# Persistent storage for the SQLite scan history (/app/data in the pod).
+# No storageClassName: uses the cluster's default class
+# (Minikube: "standard", backed by its built-in hostpath provisioner).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cloudsentinel-data
+  labels:
+    app: cloudsentinel
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi

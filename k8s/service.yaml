@@ -1,0 +1,17 @@
+# Exposes the API on a node port (Minikube: `minikube service cloudsentinel --url`).
+# The API has no authentication; keep this on a local cluster only.
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloudsentinel
+  labels:
+    app: cloudsentinel
+spec:
+  type: NodePort
+  selector:
+    app: cloudsentinel
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+      protocol: TCP

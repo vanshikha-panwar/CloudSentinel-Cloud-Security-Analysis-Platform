@@ -76,3 +76,8 @@ Thumbs.db
 # Project specific
 output/
 *.log
+
+# Local scan history database (CLOUDSENTINEL_DB_PATH default)
+data/
+*.db
+*.db-journal

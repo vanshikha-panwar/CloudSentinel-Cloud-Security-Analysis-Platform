@@ -4,6 +4,8 @@ Shared fixtures for API tests.
 Every API test runs with the AWS SDK, LLM vendor SDKs and outbound network
 connections blocked, and with all CLOUDSENTINEL_LLM_* settings removed, so
 no real AWS or LLM calls can happen and local credentials never leak in.
+Each test also gets its own temporary SQLite database, so the real scan
+history is never touched.
 """
 
 import json
@@ -16,6 +18,8 @@ from fastapi.testclient import TestClient
 
 from cloudsentinel.api.app import create_app
 from cloudsentinel.api.routes.findings import get_explanation_service
+from cloudsentinel.api.routes.scans import get_scan_repository
+from cloudsentinel.db import ENV_DB_PATH
 from cloudsentinel.llm.config import ENV_VARS as LLM_ENV_VARS
 
 DEMO_DATA_PATH = Path(__file__).resolve().parents[2] / "sample_data" / "demo_iam_data.json"
@@ -31,6 +35,16 @@ def isolate_llm_config(monkeypatch):
     get_explanation_service.cache_clear()
     yield
     get_explanation_service.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def isolate_database(monkeypatch, tmp_path):
+    """Point scan history at a fresh per-test SQLite file."""
+    db_path = tmp_path / "cloudsentinel-test.db"
+    monkeypatch.setenv(ENV_DB_PATH, str(db_path))
+    get_scan_repository.cache_clear()
+    yield db_path
+    get_scan_repository.cache_clear()
 
 
 @pytest.fixture(autouse=True)

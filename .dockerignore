@@ -20,6 +20,11 @@ output
 report resources
 screenshots
 
+# Local SQLite scan history (sensitive; never sent to the build context)
+data/
+*.db
+*.db-journal
+
 # Not needed by the API container
 tests
 sample_data
