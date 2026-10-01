@@ -214,3 +214,15 @@ class ScanService:
             "mitre_attack_summary": self.mitre_mapper.summarize_findings(findings),
             "findings": findings,
         }
+
+    def find_finding(self, iam_data: Dict[str, Any], finding_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Return the scanner-generated finding with this ID, or None.
+
+        Re-runs the deterministic scan (without filters) instead of trusting
+        a client-supplied finding, so the scanner stays the source of truth.
+        """
+        for finding in self.run_scan(iam_data)["findings"]:
+            if finding.get("finding_id") == finding_id:
+                return finding
+        return None

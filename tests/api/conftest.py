@@ -1,8 +1,9 @@
 """
 Shared fixtures for API tests.
 
-Every API test runs with the AWS SDK, the Anthropic SDK and outbound
-network connections blocked, so no real AWS or Claude calls can happen.
+Every API test runs with the AWS SDK, LLM vendor SDKs and outbound network
+connections blocked, and with all CLOUDSENTINEL_LLM_* settings removed, so
+no real AWS or LLM calls can happen and local credentials never leak in.
 """
 
 import json
@@ -14,15 +15,28 @@ import pytest
 from fastapi.testclient import TestClient
 
 from cloudsentinel.api.app import create_app
+from cloudsentinel.api.routes.findings import get_explanation_service
+from cloudsentinel.llm.config import ENV_VARS as LLM_ENV_VARS
 
 DEMO_DATA_PATH = Path(__file__).resolve().parents[2] / "sample_data" / "demo_iam_data.json"
 LOOPBACK_HOSTS = ("127.0.0.1", "::1", "localhost")
+BLOCKED_SDK_MODULES = ("anthropic", "openai", "google.genai", "google.generativeai")
+
+
+@pytest.fixture(autouse=True)
+def isolate_llm_config(monkeypatch):
+    """Force the default (disabled) AI provider regardless of the developer's environment."""
+    for name in LLM_ENV_VARS:
+        monkeypatch.delenv(name, raising=False)
+    get_explanation_service.cache_clear()
+    yield
+    get_explanation_service.cache_clear()
 
 
 @pytest.fixture(autouse=True)
 def block_external_calls(monkeypatch):
     def fail(*args, **kwargs):
-        raise AssertionError("API tests must not make AWS, Claude or external network calls")
+        raise AssertionError("API tests must not make AWS, LLM or external network calls")
 
     boto3 = sys.modules.get("boto3")
     if boto3 is not None:
@@ -31,7 +45,8 @@ def block_external_calls(monkeypatch):
     else:
         monkeypatch.setitem(sys.modules, "boto3", None)
         monkeypatch.setitem(sys.modules, "botocore", None)
-    monkeypatch.setitem(sys.modules, "anthropic", None)
+    for module in BLOCKED_SDK_MODULES:
+        monkeypatch.setitem(sys.modules, module, None)
 
     # Loopback stays allowed: the event loop may use a local socketpair on Windows
     real_connect = socket.socket.connect

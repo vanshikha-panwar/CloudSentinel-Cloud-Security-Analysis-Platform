@@ -10,7 +10,7 @@ from typing import Dict
 from fastapi import FastAPI
 
 from cloudsentinel import __version__
-from cloudsentinel.api.routes import rules, scans
+from cloudsentinel.api.routes import findings, rules, scans
 from cloudsentinel.api.schemas import HealthResponse
 
 
@@ -28,6 +28,7 @@ def create_app() -> FastAPI:
 
     app.include_router(scans.router)
     app.include_router(rules.router)
+    app.include_router(findings.router)
     return app
 
 
