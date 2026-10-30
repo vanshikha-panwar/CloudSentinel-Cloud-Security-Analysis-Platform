@@ -1,0 +1,18 @@
+# Non-sensitive CloudSentinel configuration, loaded into the pod as
+# environment variables (see deployment.yaml envFrom).
+# The LLM API key is NOT stored here: it comes from the optional Secret
+# "cloudsentinel-llm" (see k8s/README.md). After editing, apply and run
+# `kubectl rollout restart deployment/cloudsentinel` to pick up changes.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloudsentinel-config
+  labels:
+    app: cloudsentinel
+data:
+  CLOUDSENTINEL_DB_PATH: /app/data/cloudsentinel.db
+  # AI explanations are off by default. To enable, set the provider to
+  # "openai_compatible", add CLOUDSENTINEL_LLM_BASE_URL and
+  # CLOUDSENTINEL_LLM_MODEL, and create the cloudsentinel-llm Secret.
+  CLOUDSENTINEL_LLM_PROVIDER: disabled
+  CLOUDSENTINEL_LLM_TIMEOUT_SECONDS: "20"

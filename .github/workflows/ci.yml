@@ -1,0 +1,157 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+  IMAGE: cloudsentinel:latest
+
+jobs:
+  test:
+    name: Tests (Python 3.11)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            constraints.txt
+
+      - name: Install dependencies (pinned by constraints.txt)
+        run: pip install -r requirements.txt -c constraints.txt
+
+      # No AWS credentials or LLM keys are needed: the tests use demo data,
+      # fake providers and mocked HTTP, and block outbound network access.
+      - name: Run test suite
+        run: python -m pytest -q --junitxml=test-results.xml
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results.xml
+
+  docker:
+    name: Docker build and smoke test
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t "$IMAGE" .
+
+      - name: Start container with a data volume
+        run: |
+          docker volume create cloudsentinel-data
+          docker run -d --name cloudsentinel -p 127.0.0.1:8000:8000 \
+            -v cloudsentinel-data:/app/data "$IMAGE"
+
+      - name: Wait for /health
+        run: |
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:8000/health && echo && exit 0
+            sleep 1
+          done
+          echo "API did not become healthy"; exit 1
+
+      - name: Smoke test endpoints
+        run: bash scripts/smoke_test.sh http://127.0.0.1:8000
+
+      - name: Verify non-root user
+        run: |
+          uid="$(docker exec cloudsentinel id -u)"
+          echo "container UID: $uid"
+          test "$uid" = "10001"
+
+      - name: Verify scan history survives a container restart
+        run: |
+          docker restart cloudsentinel
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8000/health >/dev/null && break; sleep 1; done
+          count="$(docker exec cloudsentinel python -c "import sqlite3; print(sqlite3.connect('/app/data/cloudsentinel.db').execute('SELECT COUNT(*) FROM scans').fetchone()[0])")"
+          echo "stored scans after restart: $count"
+          test "$count" -ge 1
+
+      - name: Container logs
+        if: always()
+        run: docker logs cloudsentinel || true
+
+      - name: Clean up
+        if: always()
+        run: |
+          docker rm -f cloudsentinel || true
+          docker volume rm cloudsentinel-data || true
+
+  kubernetes:
+    name: Kubernetes deploy (kind)
+    needs: docker
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t "$IMAGE" .
+
+      - name: Create local kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: cloudsentinel
+
+      - name: Load image into the cluster
+        run: kind load docker-image "$IMAGE" --name cloudsentinel
+
+      - name: Apply manifests
+        run: kubectl apply -f k8s/
+
+      - name: Wait for rollout
+        run: kubectl rollout status deployment/cloudsentinel --timeout=180s
+
+      - name: Smoke test via port-forward to the Service
+        run: |
+          kubectl port-forward service/cloudsentinel 8000:8000 > port-forward.log 2>&1 &
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8000/health >/dev/null && break; sleep 1; done
+          bash scripts/smoke_test.sh http://127.0.0.1:8000
+
+      # port-forward connects to a pod directly; this call goes through the
+      # Service's cluster DNS name and ClusterIP, like other pods would.
+      - name: Call the Service from inside the cluster
+        run: |
+          kubectl run svc-check --image="$IMAGE" --image-pull-policy=IfNotPresent \
+            --restart=Never --rm -i --command -- \
+            python -c "import urllib.request; print(urllib.request.urlopen('http://cloudsentinel:8000/health', timeout=10).read().decode())"
+
+      - name: Verify scan history survives a pod restart (PVC)
+        run: |
+          kubectl rollout restart deployment/cloudsentinel
+          kubectl rollout status deployment/cloudsentinel --timeout=180s
+          count="$(kubectl exec deploy/cloudsentinel -- python -c "import sqlite3; print(sqlite3.connect('/app/data/cloudsentinel.db').execute('SELECT COUNT(*) FROM scans').fetchone()[0])")"
+          echo "stored scans after restart: $count"
+          test "$count" -ge 1
+
+      - name: Diagnostics
+        if: failure()
+        run: |
+          kubectl get all,pvc,configmap -o wide || true
+          kubectl describe pods -l app=cloudsentinel || true
+          kubectl logs -l app=cloudsentinel --tail=200 || true
+          cat port-forward.log || true

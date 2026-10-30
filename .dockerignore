@@ -32,9 +32,25 @@ main.py
 README.md
 Dockerfile
 .dockerignore
+.github
+k8s
 
-# Local editor / environment files
+# Test / coverage artifacts
+.coverage
+.coverage.*
+htmlcov
+coverage.xml
+junit*.xml
+
+# Local editor files
 .vscode
 .idea
-.env
 *.log
+
+# Secrets and credentials (never sent to the build context)
+.env
+.env.*
+*.pem
+*.key
+.aws
+credentials

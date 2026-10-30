@@ -1,5 +1,7 @@
 # CloudSentinel — Cloud IAM Security Analysis Platform
 
+[![CI](https://github.com/vanshikha-panwar/CloudSentinel-Cloud-Security-Analysis-Platform/actions/workflows/ci.yml/badge.svg)](https://github.com/vanshikha-panwar/CloudSentinel-Cloud-Security-Analysis-Platform/actions/workflows/ci.yml)
+
 *Evolved from the **AWS IAM Security Scanner***
 
 A Python-based security tool that scans AWS IAM configurations for
@@ -226,8 +228,12 @@ iam-scanner/
 ├── screenshots/                 # README screenshots
 ├── output/                      # Generated CLI reports (gitignored)
 ├── main.py                      # CLI entry point
+├── .github/workflows/ci.yml     # CI: tests → Docker smoke test → kind deployment
+├── scripts/smoke_test.sh        # End-to-end check of a running API (used by CI)
+├── k8s/                         # Kubernetes: Deployment, Service, ConfigMap, PVC
 ├── Dockerfile                   # Container image for the REST API
-├── .dockerignore                # Keeps the build context small
+├── .dockerignore                # Keeps the build context small and secret-free
+├── constraints.txt              # Exact dependency versions for CI and Docker
 └── requirements.txt
 ```
 
@@ -243,7 +249,7 @@ iam-scanner/
 
 2. Install dependencies (Python 3.11 recommended):
    ```bash
-   pip install -r requirements.txt
+   pip install -r requirements.txt -c constraints.txt   # exact versions verified by the test suite
    ```
 
 3. **Only for live AWS scans with the CLI**, configure AWS credentials (one of the following):
@@ -720,28 +726,32 @@ uvicorn cloudsentinel.api.app:app --host 0.0.0.0 --port 8000
 The container does not need AWS credentials: it analyzes the IAM data sent
 to `POST /scans`.
 
-> **Status:** the Dockerfile has not yet been built or run locally (Docker was
-> not available during development), including the SQLite data directory and
-> volume setup below. The API itself was verified outside Docker using the
-> same files and start command.
+> **Status:** Docker was not available on the development machine, so the
+> image has not been built locally. The [CI workflow](#cicd-github-actions)
+> builds it and smoke-tests the running container on every push; check the
+> Actions tab for the actual result. Dependencies are pinned with
+> `constraints.txt` so the image installs the versions verified by the test suite.
 
 **Build the image** (from the repository root):
 
 ```bash
-docker build -t cloudsentinel-api .
+docker build -t cloudsentinel:latest .
 ```
 
-**Run the container:**
+**Run the container** (with a named volume for SQLite history):
 
 ```bash
-docker run -d --rm --name cloudsentinel -p 8000:8000 cloudsentinel-api
+docker run -d --rm --name cloudsentinel -p 127.0.0.1:8000:8000 -v cloudsentinel-data:/app/data cloudsentinel:latest
 ```
 
-**Check it is running:**
+**Check health, status and logs:**
 
 ```bash
-curl http://127.0.0.1:8000/health
-# {"status":"ok"}
+curl http://127.0.0.1:8000/health                                 # {"status":"ok"}
+docker ps --filter name=cloudsentinel                             # STATUS shows (healthy) once the HEALTHCHECK passes
+docker inspect --format '{{.State.Health.Status}}' cloudsentinel  # healthy / starting / unhealthy
+docker logs -f cloudsentinel                                      # uvicorn access and error logs
+bash scripts/smoke_test.sh http://127.0.0.1:8000                  # end-to-end endpoint check (same script as CI)
 ```
 
 **Interactive API docs:** open [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) in a browser.
@@ -758,7 +768,7 @@ keep it:
 ```bash
 docker run -d --rm --name cloudsentinel -p 127.0.0.1:8000:8000 \
   -v cloudsentinel-data:/app/data \
-  cloudsentinel-api
+  cloudsentinel:latest
 ```
 
 A new, empty named volume takes its ownership from the image's `/app/data`,
@@ -783,7 +793,7 @@ docker run -d --rm --name cloudsentinel -p 127.0.0.1:8000:8000 \
   -v cloudsentinel-data:/app/data \
   -e CLOUDSENTINEL_LLM_PROVIDER -e CLOUDSENTINEL_LLM_BASE_URL \
   -e CLOUDSENTINEL_LLM_MODEL -e CLOUDSENTINEL_LLM_API_KEY \
-  cloudsentinel-api
+  cloudsentinel:latest
 ```
 
 > **Security note:** the API has no authentication. When an LLM API key is
@@ -796,7 +806,41 @@ docker run -d --rm --name cloudsentinel -p 127.0.0.1:8000:8000 \
 
 ```bash
 docker stop cloudsentinel
+docker volume rm cloudsentinel-data   # optional: delete the stored scan history
 ```
+
+---
+
+## Kubernetes
+
+The `k8s/` directory deploys the same image to a local cluster (Minikube,
+kind or Docker Desktop):
+
+| Manifest | Resource |
+|----------|----------|
+| `configmap.yaml` | Non-sensitive settings (`CLOUDSENTINEL_DB_PATH`, AI provider disabled by default) |
+| `deployment.yaml` | 1 replica (`Recreate` strategy), non-root UID 10001, `/health` readiness/liveness probes, CPU/memory requests and limits, optional Secret reference for the LLM API key |
+| `pvc.yaml` | 1Gi `ReadWriteOnce` volume for the SQLite database at `/app/data` |
+| `service.yaml` | NodePort Service on port 8000 |
+
+```bash
+docker build -t cloudsentinel:latest .        # inside the cluster's Docker, or load it (see k8s/README.md)
+kubectl apply -f k8s/
+kubectl rollout status deployment/cloudsentinel
+kubectl port-forward service/cloudsentinel 8000:8000
+curl http://127.0.0.1:8000/health
+kubectl logs -l app=cloudsentinel -f
+```
+
+**Why one replica:** SQLite is a single-file database that supports one
+writer. The Deployment runs exactly one pod and uses the `Recreate` strategy
+so two pods never write to the same file; scaling out would need a shared
+database server instead.
+
+> **Status:** no Kubernetes cluster was available on the development machine.
+> The CI workflow deploys the manifests to a temporary kind cluster and runs
+> the smoke test through the Service; check the Actions tab for the actual
+> result. Full instructions, Secret setup and cleanup: [k8s/README.md](k8s/README.md).
 
 ---
 
@@ -890,7 +934,7 @@ python -m pytest
 ```
 
 Current verified result (Python 3.11.8, clean virtual environment):
-**295 passed, 1 warning**. The warning is an existing Starlette deprecation
+**355 passed, 1 warning**. The warning is an existing Starlette deprecation
 notice about using `httpx` with FastAPI's `TestClient`; it does not affect
 the results.
 
@@ -902,7 +946,9 @@ the results.
 | LLM adapter and configuration | `tests/llm/test_openai_compatible.py` | 57 |
 | REST API: `/health`, `/scans`, `/rules` | `tests/api/test_scans.py`, `tests/api/test_rules.py` | 27 |
 | REST API: `/findings/{finding_id}/explain` | `tests/api/test_findings.py` | 40 |
-| **Total** | | **295** |
+| SQLite persistence layer | `tests/db/test_repository.py` | 25 |
+| REST API: scan and explanation history | `tests/api/test_history.py` | 35 |
+| **Total** | | **355** |
 
 Run a single suite:
 
@@ -910,6 +956,7 @@ Run a single suite:
 python -m pytest tests/test_rules.py
 python -m pytest tests/services
 python -m pytest tests/llm
+python -m pytest tests/db
 python -m pytest tests/api
 ```
 
@@ -922,13 +969,56 @@ call.
 
 ---
 
+## CI/CD (GitHub Actions)
+
+`.github/workflows/ci.yml` runs on every push and pull request to `main`
+(and manually via *Run workflow*). It needs no AWS credentials, API keys or
+repository secrets, and has read-only repository permissions.
+
+| Job | What it does |
+|-----|--------------|
+| **Tests (Python 3.11)** | Installs `requirements.txt` pinned by `constraints.txt` (with pip caching) and runs `python -m pytest`; uploads JUnit results as an artifact |
+| **Docker build and smoke test** | Builds the image, runs it with a data volume, waits for `/health`, runs `scripts/smoke_test.sh`, checks the container runs as UID 10001, and checks scan history survives a container restart |
+| **Kubernetes deploy (kind)** | Builds the image, creates a temporary kind cluster on the runner, loads the image, applies `k8s/`, waits for the rollout, runs the smoke test through the Service, and checks history survives a pod restart (PVC) |
+
+Each job runs only if the previous one passed, so a failing test stops the
+pipeline before any image is built. Nothing is pushed to a registry or
+deployed outside the runner. Results appear in the repository's **Actions**
+tab and as checks on pull requests.
+
+Reproduce the CI steps locally:
+
+```bash
+pip install -r requirements.txt -c constraints.txt
+python -m pytest
+docker build -t cloudsentinel:latest .
+docker run -d --rm --name cloudsentinel -p 127.0.0.1:8000:8000 -v cloudsentinel-data:/app/data cloudsentinel:latest
+bash scripts/smoke_test.sh http://127.0.0.1:8000
+```
+
+---
+
+## Troubleshooting
+
+| Symptom | Likely cause and fix |
+|---------|----------------------|
+| `ModuleNotFoundError: No module named 'scanner'` when running tests | Run `python -m pytest` from the repository root (not bare `pytest`) |
+| `POST /scans` works but responses have no `X-Scan-Id`, and `/scans` returns 503 | The SQLite file can't be written. Check the volume mount on `/app/data` and that it is writable by UID 10001; see the server logs |
+| Container `unhealthy` or pod not `Ready` | `docker logs cloudsentinel` / `kubectl logs -l app=cloudsentinel`; `kubectl describe pod -l app=cloudsentinel` shows probe failures |
+| Pod stuck in `ErrImagePull` / `ImagePullBackOff` | The cluster can't see the local image. Build it inside the cluster's Docker or run `minikube image load cloudsentinel:latest` / `kind load docker-image cloudsentinel:latest` |
+| Pod stuck in `Pending` | The PVC isn't bound: `kubectl get pvc`; the cluster needs a default StorageClass |
+| `POST /findings/.../explain` returns 503 | AI explanations are disabled by default; see [Provider configuration](#provider-configuration) |
+
+---
+
 ## Limitations
 
 - **No authentication** on the REST API yet.
 - **No rate limiting or caching**: every explanation request is a new call to the LLM provider.
 - **The AI provider is external**: explanations depend on its availability, quotas and data-handling terms.
 - **Contradiction detection is heuristic**: it catches false-positive claims and conflicting severity/CVSS statements, but not every way a narrative could mislead (for example, suggested alternative remediation is only discouraged by the prompt).
-- **Docker runtime has not been verified locally**: the image has not yet been built or run.
+- **Docker and Kubernetes have not been run on the development machine**: they are exercised only by the CI workflow (Docker build, container smoke test, kind deployment). Their status is whatever the latest Actions run shows.
+- **SQLite limits deployment to a single replica**; horizontal scaling would require a database server.
 - **Provider compatibility** depends on each provider's implementation of the OpenAI-compatible API; Google Gemini is the only provider validated so far.
 
 ---
@@ -945,11 +1035,13 @@ call.
 - CloudSentinel service layer (`ScanService`, rule catalog, stable finding IDs)
 - FastAPI REST API (`/health`, `/scans`, `/rules`, `/findings/{finding_id}/explain`, `/docs`)
 - AI-assisted finding explanations with a provider-agnostic LLM layer, validated with a real Google Gemini request
-- Automated testing: 295 tests across scanner, services, LLM adapter and API
+- SQLite scan and explanation history (`GET /scans`, `GET /scans/{scan_id}`, `GET /findings/{finding_id}/explanations`)
+- Automated testing: 355 tests across scanner, services, persistence, LLM adapter and API
 
-**In progress**
+**Implemented, verified through CI only** (not run on the development machine)
 
-- Docker support: `Dockerfile` and `.dockerignore` are written; the container has not yet been built or run locally
+- GitHub Actions pipeline: tests → Docker build and container smoke test → kind Kubernetes deployment
+- Docker image (non-root, pinned dependencies, SQLite volume) and Kubernetes manifests (Deployment, Service, ConfigMap, PVC)
 
 CloudSentinel is under active development; further layers will be documented here once they are implemented.
 

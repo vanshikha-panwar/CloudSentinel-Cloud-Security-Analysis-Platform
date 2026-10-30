@@ -34,9 +34,19 @@ spec:
           ports:
             - name: http
               containerPort: 8000
+          # Non-sensitive settings (DB path, AI provider on/off) from the ConfigMap
+          envFrom:
+            - configMapRef:
+                name: cloudsentinel-config
+          # Sensitive value from a Secret that is never committed. optional:
+          # the pod starts without it (AI explanations stay disabled).
           env:
-            - name: CLOUDSENTINEL_DB_PATH
-              value: /app/data/cloudsentinel.db
+            - name: CLOUDSENTINEL_LLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: cloudsentinel-llm
+                  key: api-key
+                  optional: true
           volumeMounts:
             - name: data
               mountPath: /app/data
@@ -60,6 +70,7 @@ spec:
               cpu: 100m
               memory: 128Mi
             limits:
+              cpu: 500m
               memory: 512Mi
           securityContext:
             allowPrivilegeEscalation: false

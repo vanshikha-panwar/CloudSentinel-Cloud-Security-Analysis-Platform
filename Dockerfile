@@ -1,9 +1,13 @@
 # CloudSentinel REST API
-# Build: docker build -t cloudsentinel-api .
+# Build: docker build -t cloudsentinel:latest .
 # Run:   docker run -d --rm --name cloudsentinel -p 127.0.0.1:8000:8000 \
-#          -v cloudsentinel-data:/app/data cloudsentinel-api
+#          -v cloudsentinel-data:/app/data cloudsentinel:latest
 
 FROM python:3.11-slim
+
+LABEL org.opencontainers.image.title="CloudSentinel API" \
+      org.opencontainers.image.description="AWS IAM security analysis REST API (FastAPI)" \
+      org.opencontainers.image.source="https://github.com/vanshikha-panwar/CloudSentinel-Cloud-Security-Analysis-Platform"
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -12,9 +16,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Dependencies first so this layer is cached across code changes
-COPY requirements.txt .
-RUN pip install -r requirements.txt
+# Dependencies first so this layer is cached across code changes.
+# constraints.txt pins the exact versions verified by the test suite.
+COPY requirements.txt constraints.txt ./
+RUN pip install -r requirements.txt -c constraints.txt
 
 # Only what the API needs at runtime:
 #   scanner/        security engine (rule engine, policy parser, risk scorer, MITRE mapper)
